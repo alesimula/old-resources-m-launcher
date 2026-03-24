@@ -1,6 +1,6 @@
 # Resource dump for Murine Launcher
 
-<img width="380" src="/image/app_icon/icon_browser_fullsize.svg"/>
+<img width="380" src="https://github.com/alesimula/Murine-launcher/blob/main/image/app_icon/icon_browser_fullsize.svg"/>
 
 ## About
 

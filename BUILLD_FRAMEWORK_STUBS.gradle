@@ -1,0 +1,51 @@
+
+// ------------------ Framework stub compilation pipeline ------------------
+// Pre-generated stubs live under framework-stubs/<name>/ (sources) and
+// framework-stubs/<name>-deps/ (compileOnly fake deps, not packaged in JAR).
+// Generate with: python framework-stubs/jar_stubify.py <jar> framework-stubs/<name> --fake-deps
+
+ext.registerFrameworkStubTasks = { String name ->
+    def srcDir  = file("${rootDir}/framework-stubs/${name}")
+    def depsDir = file("${rootDir}/framework-stubs/${name}-deps")
+
+    def compileDeps = tasks.register("compileFrameworkStubsDeps_${name}", JavaCompile) {
+        description = "Compile fake dependency stubs for ${name}"
+        source = fileTree(depsDir) { include '**/*.java' }
+        classpath = files()
+        destinationDirectory = layout.buildDirectory.dir("frameworkStubs/${name}/deps-classes")
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        options.encoding = 'UTF-8'
+        // Deps may reference types from main stubs (e.g. android.os.Parcelable)
+        options.sourcepath = files(depsDir, srcDir)
+    }
+
+    def compileStubs = tasks.register("compileFrameworkStubs_${name}", JavaCompile) {
+        description = "Compile framework stubs for ${name}"
+        dependsOn compileDeps
+        source = fileTree(srcDir) {
+            include '**/*.java'
+            // Exclude JDK module packages (split package conflict with JDK 17 modules)
+            exclude 'javax/xml/**', 'org/xml/**', 'org/w3c/**', 'sun/**'
+        }
+        classpath = files(compileDeps.flatMap { it.destinationDirectory })
+        destinationDirectory = layout.buildDirectory.dir("frameworkStubs/${name}/classes")
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        options.encoding = 'UTF-8'
+        options.compilerArgs += ['-Xmaxerrs', '50000']
+    }
+
+    def jarStubs = tasks.register("jarFrameworkStubs_${name}", Jar) {
+        description = "Package framework stubs JAR for ${name}"
+        dependsOn compileStubs
+        from compileStubs.flatMap { it.destinationDirectory }
+        archiveFileName = "${name}-stubs.jar"
+        destinationDirectory = layout.buildDirectory.dir("frameworkStubs/${name}")
+    }
+
+    return [
+            task: jarStubs,
+            jar:  new File(project.buildDir, "frameworkStubs/${name}/${name}-stubs.jar")
+    ]
+}

@@ -13,3 +13,4 @@ If you got lost and are looking for Murine Launcher (Android launcher), [you can
 - prebuilts: old prebuilt libs (e.g. Android framework, SystemUI libs etc.)
 - FONT-Gantari-for-Murine.zip: custom font based on Gantari, I use it for the clock, but only need to put the "Medium" one in the main repo
 - BUILLD_FRAMEWORK_STUBS.gradle: old gradle task to build stub in-project - stubs moved to https://jitpack.io/#alesimula/android-framework-stubs
+- f-dockerbuild: build script that handles builds with fdroiddata and fdroidserver installed in WSL (docker must be running)

@@ -2,6 +2,8 @@
 set -e
 
 OUTPUT_DIR="$1"
+COMMIT_OVERRIDE="$2"  # Optional commit SHA
+
 if [ -z "$OUTPUT_DIR" ]; then
     echo "Usage: $0 <output-directory-wsl-path>"
     exit 1
@@ -10,15 +12,20 @@ fi
 REPO_URL="https://github.com/alesimula/Murine-launcher"
 RAW_URL="https://raw.githubusercontent.com/alesimula/Murine-launcher"
 
-# --- Step 1: Get latest commit SHA from GitHub ---
-echo "==> Fetching latest commit from GitHub..."
-COMMIT=$(git ls-remote "$REPO_URL" HEAD | awk '{print $1}')
+# --- Step 1: Determine which commit to use ---
+if [ -n "$COMMIT_OVERRIDE" ]; then
+    COMMIT="$COMMIT_OVERRIDE"
+    echo "==> Using provided commit: $COMMIT"
+else
+    echo "==> Fetching latest commit from GitHub..."
+    COMMIT=$(git ls-remote "$REPO_URL" HEAD | awk '{print $1}')
 
-if [ -z "$COMMIT" ]; then
-    echo "ERROR: Failed to fetch latest commit SHA"
-    exit 1
+    if [ -z "$COMMIT" ]; then
+        echo "ERROR: Failed to fetch latest commit SHA"
+        exit 1
+    fi
+    echo "    Latest commit: $COMMIT"
 fi
-echo "    Latest commit: $COMMIT"
 
 # --- Step 2: Fetch versionName and versionCode from build.gradle in that tree ---
 echo "==> Fetching build.gradle from commit $COMMIT..."

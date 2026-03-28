@@ -1,4 +1,5 @@
 @echo off
+:: Usage: build_fdroid.bat [COMMIT_HASH/COMMIT_TAG]
 setlocal
 
 :: Convert backslashes to forward slashes, then to WSL paths
@@ -9,7 +10,7 @@ for /f "delims=" %%P in ('wsl.exe wslpath "%FWD_CD%"') do set "WSL_CWD=%%P"
 for /f "delims=" %%P in ('wsl.exe wslpath "%FWD_DP0%"') do set "WSL_SCRIPT_DIR=%%P"
 
 echo Starting fdroid build...
-wsl.exe bash "%WSL_SCRIPT_DIR%build_fdroid.sh" "%WSL_CWD%"
+wsl.exe bash "%WSL_SCRIPT_DIR%build_fdroid.sh" "%WSL_CWD%" %*
 
 if %ERRORLEVEL% neq 0 (
     echo Build failed with error code %ERRORLEVEL%

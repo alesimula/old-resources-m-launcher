@@ -1,0 +1,6 @@
+python -m pip install fonttools brotli
+
+python -c "from fontTools.ttLib.woff2 import compress; compress('Murine-Gantari-VariableFont_wght.ttf', 'murine_gantari.woff2')"
+python -c "from fontTools.ttLib.woff2 import compress; compress('Murine-Gantari-Italic-VariableFont_wght.ttf', 'murine_gantari_italic.woff2')"
+python -c "from fontTools.ttLib import SFNTReader; import fontTools.ttLib.woff2 as woff2; from fontTools.ttLib import TTFont; font = TTFont('Murine-Gantari-VariableFont_wght.ttf'); font.flavor = 'woff'; font.save('murine_gantari.woff')"
+python -c "from fontTools.ttLib import SFNTReader; import fontTools.ttLib.woff2 as woff2; from fontTools.ttLib import TTFont; font = TTFont('Murine-Gantari-Italic-VariableFont_wght.ttf'); font.flavor = 'woff'; font.save('murine_gantari_italic.woff')"

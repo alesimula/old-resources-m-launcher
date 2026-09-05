@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# Number of CPUs the build container is pinned to. This is NOT a performance knob:
+# R8 produces a different classes.dex depending on how many processors it sees, so
+# this has to match whatever the verifier uses or the reproducible build fails.
+# Check the latest CPUS_MAX configuration on F-Droid:
+# https://gitlab.com/fdroid/fdroiddata/-/blob/master/metadata/app.murinelauncher.yml
+CPUS=4
+
 OUTPUT_DIR="$1"
 COMMIT_OVERRIDE="$2"  # Optional commit SHA
 
@@ -13,18 +20,21 @@ REPO_URL="https://github.com/alesimula/Murine-launcher"
 RAW_URL="https://raw.githubusercontent.com/alesimula/Murine-launcher"
 
 # --- Step 1: Determine which commit to use ---
+# Without an override, resolve the newest v* tag (what F-Droid's UpdateCheckMode picks).
+# Done here rather than via `fdroid checkupdates`, which appends Builds entries.
 if [ -n "$COMMIT_OVERRIDE" ]; then
     COMMIT="$COMMIT_OVERRIDE"
     echo "==> Using provided commit: $COMMIT"
 else
-    echo "==> Fetching latest commit from GitHub..."
-    COMMIT=$(git ls-remote "$REPO_URL" HEAD | awk '{print $1}')
+    echo "==> Looking up latest tag on GitHub..."
+    TAG=$(git ls-remote --tags --refs "$REPO_URL" 'v*' | sed 's#.*refs/tags/##' | sort -V | tail -1)
+    COMMIT=$(git ls-remote "$REPO_URL" "refs/tags/$TAG" | awk '{print $1}')
 
-    if [ -z "$COMMIT" ]; then
-        echo "ERROR: Failed to fetch latest commit SHA"
+    if [ -z "$TAG" ] || [ -z "$COMMIT" ]; then
+        echo "ERROR: Failed to resolve latest tag"
         exit 1
     fi
-    echo "    Latest commit: $COMMIT"
+    echo "    Latest tag: $TAG ($COMMIT)"
 fi
 
 # --- Step 2: Fetch versionName and versionCode from build.gradle in that tree ---
@@ -47,17 +57,57 @@ fi
 echo "    versionCode: $VERSION_CODE"
 echo "    versionName: $VERSION_NAME"
 
-# --- Step 3: Update fdroid metadata (commit, versionName, versionCode inside Builds) ---
+# --- Step 3: Reduce Builds to a single entry pointing at our commit ---
+# Keeps the last upstream entry (current sudo:/gradle:) and drops the rest, so
+# `fdroid build app:VC` matches one entry instead of looping over all of them.
 META="$HOME/fdroiddata/metadata/app.murinelauncher.yml"
 if [ ! -f "$META" ]; then
     echo "ERROR: Metadata file not found: $META"
     exit 1
 fi
 
-sed -i "s/^\(\s*\(-\s*\)\?commit:\s*\).*/\1$COMMIT/" "$META"
-sed -i "s/^\(\s*\(-\s*\)\?versionCode:\s*\).*/\1$VERSION_CODE/" "$META"
-sed -i "s/^\(\s*\(-\s*\)\?versionName:\s*\).*/\1'$VERSION_NAME'/" "$META"
-echo "==> Updated metadata: commit, versionName, versionCode"
+git -C "$HOME/fdroiddata" checkout -- metadata/app.murinelauncher.yml 2>/dev/null \
+    || echo "    (metadata not tracked by git, editing in place)"
+
+python3 - "$META" "$COMMIT" "$VERSION_CODE" "$VERSION_NAME" <<'PY'
+import re, sys
+
+path, commit, vcode, vname = sys.argv[1:5]
+lines = open(path).read().split('\n')
+
+starts = [i for i, l in enumerate(lines) if re.match(r'\s*-\s*versionName:', l)]
+if not starts:
+    sys.exit('ERROR: no Builds entries found in ' + path)
+
+start = starts[-1]
+end = next((i for i in range(start + 1, len(lines)) if re.match(r'\S', lines[i])), len(lines))
+block = lines[start:end]
+
+def put(key, value):
+    for i, l in enumerate(block):
+        m = re.match(r'(\s*(?:-\s*)?%s:\s*).*' % key, l)
+        if m:
+            block[i] = m.group(1) + value
+            return
+    sys.exit('ERROR: key %s not found in last Builds entry' % key)
+
+put('versionName', "'%s'" % vname)
+put('versionCode', vcode)
+put('commit', commit)
+
+# keep only this one entry
+lines = lines[:starts[0]] + block + lines[end:]
+
+# keep CurrentVersion in sync, otherwise lint warns it is older than the build entry
+for i, l in enumerate(lines):
+    if l.startswith('CurrentVersion:'):
+        lines[i] = 'CurrentVersion: %s' % vname
+    elif l.startswith('CurrentVersionCode:'):
+        lines[i] = 'CurrentVersionCode: %s' % vcode
+
+open(path, 'w').write('\n'.join(lines))
+print('    Builds reduced to 1 entry -> versionCode %s @ %s' % (vcode, commit[:10]))
+PY
 
 # --- Step 4: Clean previous artifacts so nothing stale can be mistaken for this build ---
 UNSIGNED_DIR="$HOME/fdroiddata/unsigned"
@@ -75,12 +125,14 @@ if [ -f "$APK" ]; then
 fi
 
 # --- Step 5: Run fdroid build inside Docker ---
-# fdroid may return non-zero from binary comparison even on a successful build,
-# so the build just relies on APK freshness on step 6.
-echo "==> Starting Docker fdroid build..."
+# fdroid exits non-zero when the comparison against the published APK fails, expected
+# for any unreleased commit; step 6 decides success instead. --cpuset-cpus (not --cpus)
+# is what actually changes availableProcessors(); the metadata's sudo: cap is skipped.
+echo "==> Starting Docker fdroid build (pinned to $CPUS CPUs)..."
 BUILD_START=$(date +%s)
 set +e
-docker run --rm -u vagrant --entrypoint /bin/bash \
+docker run --rm -u vagrant --cpuset-cpus="0-$((CPUS - 1))" -e VC="$VERSION_CODE" \
+  --entrypoint /bin/bash \
   -v ~/fdroiddata:/build:z \
   -v ~/fdroidserver:/home/vagrant/fdroidserver:Z \
   registry.gitlab.com/fdroid/fdroidserver:buildserver \
@@ -88,11 +140,11 @@ docker run --rm -u vagrant --entrypoint /bin/bash \
 export PATH="$fdroidserver:$PATH" PYTHONPATH="$fdroidserver"
 export JAVA_HOME=$(java -XshowSettings:properties -version 2>&1 > /dev/null | grep "java.home" | awk -F"=" "{print \$2}" | tr -d " ")
 cd /build
+echo "CPUs visible to the build: $(nproc)"
 fdroid readmeta
 fdroid rewritemeta app.murinelauncher
-fdroid checkupdates --allow-dirty app.murinelauncher
 fdroid lint app.murinelauncher
-fdroid build app.murinelauncher
+fdroid build "app.murinelauncher:$VC"
 exit'
 DOCKER_EXIT=$?
 set -e

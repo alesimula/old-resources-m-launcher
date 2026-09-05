@@ -8,6 +8,11 @@ set -e
 # https://gitlab.com/fdroid/fdroiddata/-/blob/master/metadata/app.murinelauncher.yml
 CPUS=4
 
+# Everything runs inside this block so bash parses the whole script up front. Otherwise
+# it reads the file incrementally, and saving an edit mid-build makes it resume at a
+# stale byte offset and die on whatever text now sits there.
+{
+
 OUTPUT_DIR="$1"
 COMMIT_OVERRIDE="$2"  # Optional commit SHA
 
@@ -168,3 +173,6 @@ else
     find "$HOME/fdroiddata/build/app.murinelauncher/build/outputs/" -name "*.apk" 2>/dev/null || echo "  (no apk files found)"
     exit 1
 fi
+
+exit 0
+}

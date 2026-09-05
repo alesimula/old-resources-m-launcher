@@ -20,21 +20,20 @@ REPO_URL="https://github.com/alesimula/Murine-launcher"
 RAW_URL="https://raw.githubusercontent.com/alesimula/Murine-launcher"
 
 # --- Step 1: Determine which commit to use ---
-# Without an override, resolve the newest v* tag (what F-Droid's UpdateCheckMode picks).
+# Without an override, resolve the newest commit.
 # Done here rather than via `fdroid checkupdates`, which appends Builds entries.
 if [ -n "$COMMIT_OVERRIDE" ]; then
     COMMIT="$COMMIT_OVERRIDE"
     echo "==> Using provided commit: $COMMIT"
 else
-    echo "==> Looking up latest tag on GitHub..."
-    TAG=$(git ls-remote --tags --refs "$REPO_URL" 'v*' | sed 's#.*refs/tags/##' | sort -V | tail -1)
-    COMMIT=$(git ls-remote "$REPO_URL" "refs/tags/$TAG" | awk '{print $1}')
+    echo "==> Fetching latest commit from GitHub..."
+    COMMIT=$(git ls-remote "$REPO_URL" HEAD | awk '{print $1}')
 
-    if [ -z "$TAG" ] || [ -z "$COMMIT" ]; then
-        echo "ERROR: Failed to resolve latest tag"
+    if [ -z "$COMMIT" ]; then
+        echo "ERROR: Failed to fetch latest commit SHA"
         exit 1
     fi
-    echo "    Latest tag: $TAG ($COMMIT)"
+    echo "    Latest commit: $COMMIT"
 fi
 
 # --- Step 2: Fetch versionName and versionCode from build.gradle in that tree ---
